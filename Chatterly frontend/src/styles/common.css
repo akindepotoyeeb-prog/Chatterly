@@ -1,0 +1,87 @@
+/* Shared components: Avatar, Modal, Toast, Skeleton, SearchInput, states. */
+
+/* Avatar */
+.avatar {
+  position: relative; flex-shrink: 0;
+  display: inline-grid; place-items: center;
+  border-radius: var(--radius-full); color: #fff; font-weight: 700;
+  user-select: none;
+}
+.avatar-sm { width: 32px; height: 32px; font-size: var(--text-xs); }
+.avatar-md { width: 44px; height: 44px; font-size: var(--text-sm); }
+.avatar-lg { width: 56px; height: 56px; font-size: var(--text-lg); }
+.avatar-xl { width: 96px; height: 96px; font-size: var(--text-xl); }
+.avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+.avatar-status {
+  position: absolute; right: 0; bottom: 0; width: 28%; height: 28%; min-width: 9px; min-height: 9px;
+  border-radius: var(--radius-full); background: var(--accent); border: 2px solid var(--surface);
+}
+
+/* Brand */
+.brand { display: flex; align-items: center; gap: var(--space-3); }
+.brand-mark {
+  width: 38px; height: 38px; display: grid; place-items: center;
+  border-radius: 11px; background: var(--accent); color: #022c22;
+}
+.brand-name { font-size: var(--text-lg); font-weight: 800; letter-spacing: -0.02em; }
+
+/* Search */
+.search { position: relative; display: flex; align-items: center; }
+.search-icon { position: absolute; left: var(--space-3); color: var(--text-muted); pointer-events: none; }
+.search .input { padding-left: 40px; padding-right: 40px; border-radius: var(--radius-full); background: var(--surface-alt); }
+.search-clear { position: absolute; right: 4px; width: 36px; height: 36px; }
+
+/* Modal */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: var(--z-modal);
+  display: grid; place-items: center; padding: var(--space-4);
+  background: rgba(2, 6, 23, 0.55);
+  animation: fade-in 140ms ease;
+}
+.modal {
+  width: 100%; max-width: 480px; max-height: calc(100dvh - 32px); overflow: auto;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+  animation: pop-in 160ms ease;
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--border); }
+.modal-body { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); }
+.modal-foot { display: flex; justify-content: flex-end; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-top: 1px solid var(--border); }
+
+/* Toast */
+.toast-region {
+  position: fixed; z-index: var(--z-toast);
+  right: var(--space-4); bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; gap: var(--space-2);
+  width: min(360px, calc(100vw - 32px)); pointer-events: none;
+}
+.toast {
+  pointer-events: auto; display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4); border-radius: var(--radius-md);
+  background: var(--surface); border: 1px solid var(--border); border-left-width: 4px;
+  box-shadow: var(--shadow-md); animation: pop-in 160ms ease;
+}
+.toast-success { border-left-color: var(--accent); }
+.toast-error { border-left-color: var(--danger); }
+.toast-info { border-left-color: var(--info); }
+.toast-message { flex: 1; font-size: var(--text-sm); font-weight: 600; padding-top: 2px; }
+.toast .icon-btn { width: 28px; height: 28px; }
+
+/* Skeleton */
+.skeleton {
+  display: block; border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--surface-alt) 25%, var(--border) 50%, var(--surface-alt) 75%);
+  background-size: 200% 100%; animation: shimmer 1.4s linear infinite;
+}
+.skeleton-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
+.skeleton-lines { flex: 1; display: flex; flex-direction: column; gap: var(--space-2); }
+
+/* Empty and error states */
+.state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-3); padding: var(--space-6) var(--space-5); }
+.state-icon { display: grid; place-items: center; width: 56px; height: 56px; border-radius: var(--radius-full); background: var(--accent-soft); color: var(--accent-strong); }
+.state-error .state-icon { background: var(--danger-soft); color: var(--danger); }
+.state p { max-width: 36ch; color: var(--text-muted); font-size: var(--text-sm); }
+
+@keyframes shimmer { to { background-position: -200% 0; } }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } }

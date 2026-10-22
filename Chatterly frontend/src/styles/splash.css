@@ -1,0 +1,30 @@
+.splash-screen {
+  position: relative;
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  overflow: hidden;
+  padding: 32px 20px;
+  color: #f8fafc;
+  background: radial-gradient(circle at 50% 44%, #182b58 0, #101a35 36%, #080e1d 78%);
+  isolation: isolate;
+}
+.splash-content { position: relative; z-index: 1; display: flex; width: min(100%, 440px); flex-direction: column; align-items: center; text-align: center; animation: splash-rise 700ms ease both; }
+.splash-logo-wrap { margin-bottom: 42px; }
+.splash-screen .brand { color: #fff; }
+.splash-screen .brand-mark { color: #fff; background: linear-gradient(135deg, #818cf8, #6366f1); box-shadow: 0 12px 34px #6366f14d; }
+.splash-screen .brand-name { font-size: 1.3rem; letter-spacing: -.04em; }
+.splash-icon { position: relative; display: grid; width: 88px; height: 88px; place-items: center; margin-bottom: 28px; border: 1px solid #a5b4fc3d; border-radius: 28px; color: #c7d2fe; background: #818cf81a; box-shadow: 0 0 70px #6366f12b; }
+.splash-sparkle { position: absolute; top: -8px; right: -8px; color: #fbbf24; }
+.splash-content h1 { margin: 0; color: #f8fafc; font-size: clamp(2.2rem, 7vw, 3.4rem); font-weight: 800; line-height: 1.08; letter-spacing: -.065em; }
+.splash-content h1 span { color: #a5b4fc; }
+.splash-content p { margin: 18px 0 32px; color: #a6b3cb; font-size: .98rem; }
+.splash-loader { width: 92px; height: 4px; overflow: hidden; border-radius: 99px; background: #ffffff1a; }
+.splash-loader span { display: block; width: 42%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #818cf8, #67e8f9); animation: splash-loading 1.05s ease-in-out infinite; }
+.splash-orb { position: absolute; z-index: -1; width: 280px; height: 280px; border-radius: 50%; filter: blur(1px); opacity: .14; }
+.splash-orb-one { top: -140px; left: -80px; background: #6366f1; }
+.splash-orb-two { right: -130px; bottom: -130px; background: #06b6d4; }
+.splash-bottom { position: absolute; bottom: max(22px, env(safe-area-inset-bottom)); color: #7e8ca7; font-size: .75rem; letter-spacing: .08em; }
+@keyframes splash-loading { 0% { transform: translateX(-120%); } 100% { transform: translateX(260%); } }
+@keyframes splash-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .splash-content, .splash-loader span { animation: none; } }

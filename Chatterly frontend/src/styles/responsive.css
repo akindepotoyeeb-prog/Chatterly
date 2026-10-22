@@ -1,0 +1,13 @@
+/* Breakpoints: tablet <= 1024px, mobile <= 640px. */
+@media (max-width: 1024px) {
+  :root { --list-width: 300px; }
+}
+
+@media (max-width: 640px) {
+  h1 { font-size: var(--text-xl); }
+  .page { padding: var(--space-4) var(--space-3) var(--space-6); }
+  .page-head .btn { min-width: var(--touch-target); }
+  .modal-backdrop { align-items: end; padding: 0; }
+  .modal { max-width: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+  .toast-region { right: var(--space-3); left: var(--space-3); width: auto; }
+}

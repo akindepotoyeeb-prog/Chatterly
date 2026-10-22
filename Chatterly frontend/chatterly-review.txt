@@ -1,0 +1,1374 @@
+﻿
+
+========================================
+FILE: src\App.jsx
+========================================
+import { Routes, Route } from "react-router-dom";
+import DesignSystem from "./pages/DesignSystem.jsx";
+
+/* Phase 2 replaces "*" with the sign-in, sign-up and forgot-password routes. */
+export default function App() {
+  return (
+    <Routes>
+      <Route path="*" element={<DesignSystem />} />
+    </Routes>
+  );
+}
+
+
+
+========================================
+FILE: src\context\ThemeContext.jsx
+========================================
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+
+const ThemeContext = createContext(null);
+const STORAGE_KEY = "cloudchat-theme";
+
+function getInitialTheme() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved === "light" || saved === "dark") return saved;
+  } catch {
+    /* storage may be blocked; fall through to system preference */
+  }
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+export function ThemeProvider({ children }) {
+  const [theme, setTheme] = useState(getInitialTheme);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    try {
+      localStorage.setItem(STORAGE_KEY, theme); // UI preference only, never credentials
+    } catch {
+      /* ignore */
+    }
+  }, [theme]);
+
+  const toggleTheme = useCallback(() => setTheme((t) => (t === "light" ? "dark" : "light")), []);
+  const value = useMemo(() => ({ theme, setTheme, toggleTheme }), [theme, toggleTheme]);
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
+export function useTheme() {
+  const ctx = useContext(ThemeContext);
+  if (!ctx) throw new Error("useTheme must be used inside <ThemeProvider>");
+  return ctx;
+}
+
+
+
+========================================
+FILE: src\context\AuthContext.jsx
+========================================
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import * as authService from "../services/authService.js";
+
+/*
+ * Auth state lives in memory only. Passwords and tokens are never written to
+ * localStorage. With the future Django backend, the session should travel in an
+ * HttpOnly cookie that the browser manages, so this file never touches a token.
+ * Today the sign-in is a simulation: no real account or session exists.
+ */
+const AuthContext = createContext(null);
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    authService
+      .getCurrentUser()
+      .then((u) => !cancelled && setUser(u))
+      .catch(() => !cancelled && setUser(null))
+      .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+  }, []);
+
+  const signIn = useCallback(async (credentials) => {
+    const u = await authService.signIn(credentials);
+    setUser(u);
+    return u;
+  }, []);
+
+  const signUp = useCallback(async (details) => {
+    const u = await authService.signUp(details);
+    setUser(u);
+    return u;
+  }, []);
+
+  const signOut = useCallback(async () => {
+    await authService.signOut();
+    setUser(null);
+  }, []);
+
+  const value = useMemo(
+    () => ({ user, setUser, loading, isAuthenticated: Boolean(user), signIn, signUp, signOut }),
+    [user, loading, signIn, signUp, signOut]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
+  return ctx;
+}
+
+
+
+========================================
+FILE: src\context\ChatContext.jsx
+========================================
+import { createContext, useContext, useMemo, useState } from "react";
+
+/*
+ * Shared UI state for the messaging screens. Phase 3 will add the selected
+ * conversation's data; for now it tracks which conversation is open and whether
+ * the mobile layout shows the list or the chat.
+ */
+const ChatContext = createContext(null);
+
+export function ChatProvider({ children }) {
+  const [activeChatId, setActiveChatId] = useState(null);
+  const [mobileView, setMobileView] = useState("list"); // "list" | "chat"
+
+  const value = useMemo(() => ({
+    activeChatId,
+    mobileView,
+    openChat: (id) => { setActiveChatId(id); setMobileView("chat"); },
+    closeChat: () => setMobileView("list"),
+  }), [activeChatId, mobileView]);
+
+  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
+}
+
+export function useChatUI() {
+  const ctx = useContext(ChatContext);
+  if (!ctx) throw new Error("useChatUI must be used inside <ChatProvider>");
+  return ctx;
+}
+
+
+
+========================================
+FILE: src\context\ToastContext.jsx
+========================================
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import ToastRegion from "../components/common/Toast.jsx";
+
+const ToastContext = createContext(null);
+
+export function ToastProvider({ children }) {
+  const [toasts, setToasts] = useState([]);
+  const nextId = useRef(1);
+
+  const dismissToast = useCallback((id) => {
+    setToasts((list) => list.filter((t) => t.id !== id));
+  }, []);
+
+  const showToast = useCallback(
+    (message, type = "info", duration = 4000) => {
+      const id = nextId.current++;
+      setToasts((list) => [...list, { id, message, type }]);
+      if (duration > 0) setTimeout(() => dismissToast(id), duration);
+      return id;
+    },
+    [dismissToast]
+  );
+
+  const value = useMemo(() => ({ showToast, dismissToast }), [showToast, dismissToast]);
+
+  return (
+    <ToastContext.Provider value={value}>
+      {children}
+      <ToastRegion toasts={toasts} onDismiss={dismissToast} />
+    </ToastContext.Provider>
+  );
+}
+
+export function useToast() {
+  const ctx = useContext(ToastContext);
+  if (!ctx) throw new Error("useToast must be used inside <ToastProvider>");
+  return ctx;
+}
+
+
+
+========================================
+FILE: src\data\mockData.js
+========================================
+/*
+ * Demo data only. Nothing here comes from a server, and nothing typed in the
+ * app is delivered to anyone. Replace with real API responses in a later phase.
+ */
+export const currentUser = {
+  id: "u-me",
+  name: "Alex Morgan",
+  email: "alex@example.com",
+  about: "Building things that matter.",
+  avatar: null,
+};
+
+export const contacts = [
+  { id: "u-1", name: "Maya Chen", status: "Designing the onboarding flow", online: true, lastSeen: null },
+  { id: "u-2", name: "Daniel Okafor", status: "At the gym", online: false, lastSeen: "2026-10-17T08:12:00Z" },
+  { id: "u-3", name: "Sofia Ramirez", status: "Available", online: true, lastSeen: null },
+  { id: "u-4", name: "Liam Novak", status: "Do not disturb", online: false, lastSeen: "2026-10-16T21:40:00Z" },
+];
+
+export const conversations = [
+  { id: "c-1", type: "direct", title: "Maya Chen", participantIds: ["u-1"], lastMessage: "Sent you the updated mockups.", updatedAt: "2026-10-17T09:41:00Z", unread: 2, pinned: true, muted: false, archived: false },
+  { id: "c-2", type: "group", title: "Weekend Hike Crew", participantIds: ["u-2", "u-3", "u-4"], lastMessage: "Daniel: Trail opens at 7.", updatedAt: "2026-10-17T08:15:00Z", unread: 0, pinned: false, muted: true, archived: false },
+  { id: "c-3", type: "direct", title: "Sofia Ramirez", participantIds: ["u-3"], lastMessage: "Thanks, that works for me.", updatedAt: "2026-10-16T18:02:00Z", unread: 0, pinned: false, muted: false, archived: false },
+  { id: "c-4", type: "direct", title: "Liam Novak", participantIds: ["u-4"], lastMessage: "Let's pick this up Monday.", updatedAt: "2026-10-12T11:20:00Z", unread: 0, pinned: false, muted: false, archived: true },
+];
+
+export const messagesByConversation = {
+  "c-1": [
+    { id: "m-1", senderId: "u-1", text: "Morning! Did you get a chance to look at the layout?", sentAt: "2026-10-17T09:30:00Z", status: "read", starred: false },
+    { id: "m-2", senderId: "u-me", text: "Yes, the sidebar spacing feels right now.", sentAt: "2026-10-17T09:35:00Z", status: "read", starred: false },
+    { id: "m-3", senderId: "u-1", text: "Sent you the updated mockups.", sentAt: "2026-10-17T09:41:00Z", status: "delivered", starred: true },
+  ],
+  "c-2": [
+    { id: "m-4", senderId: "u-3", text: "Who is bringing water?", sentAt: "2026-10-17T08:05:00Z", status: "read", starred: false },
+    { id: "m-5", senderId: "u-2", text: "Trail opens at 7.", sentAt: "2026-10-17T08:15:00Z", status: "read", starred: false },
+  ],
+  "c-3": [
+    { id: "m-6", senderId: "u-me", text: "Can we move the review to Thursday?", sentAt: "2026-10-16T17:58:00Z", status: "read", starred: false },
+    { id: "m-7", senderId: "u-3", text: "Thanks, that works for me.", sentAt: "2026-10-16T18:02:00Z", status: "read", starred: false },
+  ],
+  "c-4": [],
+};
+
+
+
+========================================
+FILE: src\hooks\useChats.js
+========================================
+import { useCallback, useEffect, useState } from "react";
+import { getConversations } from "../services/chatService.js";
+
+/** Loads the conversation list with loading and error state. */
+export function useChats() {
+  const [chats, setChats] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setChats(await getConversations());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  return { chats, setChats, loading, error, reload: load };
+}
+
+
+
+========================================
+FILE: src\hooks\useMessages.js
+========================================
+import { useCallback, useEffect, useRef, useState } from "react";
+import { getMessages } from "../services/messageService.js";
+
+/** Loads messages for one conversation; reloads when the conversation changes. */
+export function useMessages(conversationId) {
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(Boolean(conversationId));
+  const [error, setError] = useState(null);
+  const latest = useRef(0);
+
+  const load = useCallback(async () => {
+    const ticket = ++latest.current; // ignore responses from conversations we already left
+    if (!conversationId) { setMessages([]); setLoading(false); return; }
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getMessages(conversationId);
+      if (ticket === latest.current) setMessages(data);
+    } catch (err) {
+      if (ticket === latest.current) setError(err.message);
+    } finally {
+      if (ticket === latest.current) setLoading(false);
+    }
+  }, [conversationId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return { messages, setMessages, loading, error, reload: load };
+}
+
+
+
+========================================
+FILE: src\components\common\Avatar.jsx
+========================================
+const COLORS = ["#0e7490", "#047857", "#4d7c0f", "#b45309", "#be185d", "#6d28d9", "#1d4ed8", "#b91c1c"];
+
+function hash(text) {
+  let h = 0;
+  for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+function initials(name) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  const first = parts[0][0];
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
+  return (first + last).toUpperCase();
+}
+
+/** Round avatar with a deterministic colour and optional online dot. */
+export default function Avatar({ name = "", src, size = "md", online }) {
+  const style = { background: COLORS[hash(name) % COLORS.length] };
+  return (
+    <span className={`avatar avatar-${size}`} style={src ? undefined : style} role="img" aria-label={name}>
+      {src ? <img src={src} alt="" /> : initials(name)}
+      {online !== undefined && (
+        <span
+          className="avatar-status"
+          style={online ? undefined : { background: "var(--text-muted)" }}
+          title={online ? "Online" : "Offline"}
+        />
+      )}
+    </span>
+  );
+}
+
+
+
+========================================
+FILE: src\components\common\EmptyState.jsx
+========================================
+export default function EmptyState({ icon, title, message, action }) {
+  return (
+    <div className="state">
+      {icon && <span className="state-icon" aria-hidden="true">{icon}</span>}
+      <h3>{title}</h3>
+      {message && <p>{message}</p>}
+      {action}
+    </div>
+  );
+}
+
+
+
+========================================
+FILE: src\components\common\ErrorState.jsx
+========================================
+import { AlertTriangle, RotateCw } from "lucide-react";
+
+export default function ErrorState({ title = "Something went wrong", message, onRetry }) {
+  return (
+    <div className="state state-error" role="alert">
+      <span className="state-icon" aria-hidden="true"><AlertTriangle size={26} /></span>
+      <h3>{title}</h3>
+      {message && <p>{message}</p>}
+      {onRetry && (
+        <button className="btn btn-ghost" onClick={onRetry}>
+          <RotateCw size={16} /> Try again
+        </button>
+      )}
+    </div>
+  );
+}
+
+
+
+========================================
+FILE: src\components\common\LoadingSkeleton.jsx
+========================================
+/** Placeholder rows shown while data loads. Mimics a conversation list item. */
+export default function LoadingSkeleton({ rows = 4 }) {
+  return (
+    <div aria-busy="true" aria-live="polite">
+      <span className="sr-only">Loading</span>
+      {Array.from({ length: rows }, (_, i) => (
+        <div className="skeleton-row" key={i}>
+          <span className="skeleton" style={{ width: 44, height: 44, borderRadius: "50%" }} />
+          <div className="skeleton-lines">
+            <span className="skeleton" style={{ height: 12, width: "45%" }} />
+            <span className="skeleton" style={{ height: 10, width: "80%" }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+
+========================================
+FILE: src\components\common\Logo.jsx
+========================================
+import { MessagesSquare } from "lucide-react";
+
+export default function Logo({ showName = true }) {
+  return (
+    <div className="brand">
+      <span className="brand-mark" aria-hidden="true">
+        <MessagesSquare size={22} strokeWidth={2.2} />
+      </span>
+
+      {showName && (
+        <span className="brand-name">Chatterly</span>
+      )}
+    </div>
+  );
+}
+
+
+========================================
+FILE: src\components\common\Modal.jsx
+========================================
+import { useEffect, useId, useRef } from "react";
+import { createPortal } from "react-dom";
+import { X } from "lucide-react";
+
+/** Accessible dialog: closes on Escape or backdrop click, locks page scroll, restores focus. */
+export default function Modal({ open, title, onClose, children, footer }) {
+  const titleId = useId();
+  const dialogRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const previouslyFocused = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialogRef.current?.focus();
+
+    const onKeyDown = (e) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus?.();
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return createPortal(
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} ref={dialogRef}>
+        <div className="modal-head">
+          <h3 id={titleId}>{title}</h3>
+          <button className="icon-btn" onClick={onClose} aria-label="Close dialog">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="modal-body">{children}</div>
+        {footer && <div className="modal-foot">{footer}</div>}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+
+
+========================================
+FILE: src\components\common\SearchInput.jsx
+========================================
+import { Search, X } from "lucide-react";
+
+export default function SearchInput({ value, onChange, placeholder = "Search", label = "Search" }) {
+  return (
+    <div className="search" role="search">
+      <Search className="search-icon" size={18} aria-hidden="true" />
+      <input
+        className="input"
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        aria-label={label}
+      />
+      {value && (
+        <button className="icon-btn search-clear" onClick={() => onChange("")} aria-label="Clear search">
+          <X size={16} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+
+
+========================================
+FILE: src\components\common\ThemeToggle.jsx
+========================================
+import { Moon, Sun } from "lucide-react";
+import { useTheme } from "../../context/ThemeContext.jsx";
+
+export default function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+  const next = theme === "light" ? "dark" : "light";
+  return (
+    <button className="btn btn-ghost" onClick={toggleTheme} aria-label={`Switch to ${next} theme`}>
+      {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+      <span>{next === "dark" ? "Dark" : "Light"} theme</span>
+    </button>
+  );
+}
+
+
+
+========================================
+FILE: src\components\common\Toast.jsx
+========================================
+import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
+
+const ICONS = {
+  success: <CheckCircle2 size={20} color="var(--accent)" />,
+  error: <AlertCircle size={20} color="var(--danger)" />,
+  info: <Info size={20} color="var(--info)" />,
+};
+
+/** Renders the live toast stack. Use the useToast() hook to add toasts. */
+export default function ToastRegion({ toasts, onDismiss }) {
+  return (
+    <div className="toast-region" role="status" aria-live="polite">
+      {toasts.map((t) => (
+        <div key={t.id} className={`toast toast-${t.type}`}>
+          {ICONS[t.type] ?? ICONS.info}
+          <p className="toast-message">{t.message}</p>
+          <button className="icon-btn" onClick={() => onDismiss(t.id)} aria-label="Dismiss notification">
+            <X size={14} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+
+========================================
+FILE: src\services\api.js
+========================================
+/*
+ * Single place that decides how the app talks to data.
+ *
+ * VITE_USE_MOCK defaults to true, so every service answers from src/data/mockData.js.
+ * When the Django backend exists, set VITE_USE_MOCK=false and implement the
+ * non-mock branch in each service. No real endpoint exists yet; the paths
+ * noted in the services are PLANNED, not available.
+ */
+export const USE_MOCK = import.meta.env.VITE_USE_MOCK !== "false";
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+export const WS_URL = import.meta.env.VITE_WS_URL ?? "";
+
+export class ApiError extends Error {
+  constructor(message, status = 0) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+/** Simulated network latency for mock mode. */
+export const delay = (ms = 450) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Thrown by the non-mock branches until the backend is built. */
+export function notConnected(operation) {
+  return new ApiError(`${operation} is not connected to a backend yet.`, 501);
+}
+
+/**
+ * Thin fetch wrapper for the future backend. Uses cookies for the session
+ * (credentials: "include") so no token is ever stored in JavaScript.
+ */
+export async function request(path, { method = "GET", body, headers = {} } = {}) {
+  let response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      credentials: "include",
+      headers: { "Content-Type": "application/json", ...headers },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new ApiError("Could not reach the server. Check your connection and try again.");
+  }
+  if (!response.ok) throw new ApiError("The request failed.", response.status);
+  return response.status === 204 ? null : response.json();
+}
+
+
+
+========================================
+FILE: src\services\authService.js
+========================================
+import { USE_MOCK, ApiError, delay, notConnected } from "./api.js";
+import { currentUser } from "../data/mockData.js";
+
+// Simulated session: lives in memory and resets on refresh. Not a real login.
+let mockSession = null;
+
+export async function getCurrentUser() {
+  if (USE_MOCK) { await delay(250); return mockSession; }
+  throw notConnected("Loading the current user");
+}
+
+export async function signIn({ email, password }) {
+  if (USE_MOCK) {
+    await delay();
+    if (!email || !password) throw new ApiError("Enter your email and password.", 400);
+    mockSession = { ...currentUser, email };
+    return mockSession;
+  }
+  throw notConnected("Signing in");
+}
+
+export async function signUp({ name, email, password }) {
+  if (USE_MOCK) {
+    await delay();
+    if (!name || !email || !password) throw new ApiError("Fill in every field.", 400);
+    mockSession = { ...currentUser, name, email };
+    return mockSession;
+  }
+  throw notConnected("Creating an account");
+}
+
+export async function requestPasswordReset({ email }) {
+  if (USE_MOCK) { await delay(); return { email }; } // no email is actually sent
+  throw notConnected("Password reset");
+}
+
+export async function signOut() {
+  if (USE_MOCK) { await delay(150); mockSession = null; return; }
+  throw notConnected("Signing out");
+}
+
+
+
+========================================
+FILE: src\services\chatService.js
+========================================
+import { USE_MOCK, delay, notConnected } from "./api.js";
+import { conversations, contacts } from "../data/mockData.js";
+
+export async function getConversations() {
+  if (USE_MOCK) { await delay(); return conversations.map((c) => ({ ...c })); }
+  throw notConnected("Loading conversations");
+}
+
+export async function getContacts() {
+  if (USE_MOCK) { await delay(); return contacts.map((c) => ({ ...c })); }
+  throw notConnected("Loading contacts");
+}
+
+export async function createGroup({ title, participantIds }) {
+  if (USE_MOCK) {
+    await delay();
+    return {
+      id: `c-${Date.now()}`, type: "group", title, participantIds,
+      lastMessage: "Group created", updatedAt: new Date().toISOString(),
+      unread: 0, pinned: false, muted: false, archived: false,
+    };
+  }
+  throw notConnected("Creating a group");
+}
+
+export async function addContact({ name }) {
+  if (USE_MOCK) {
+    await delay();
+    return { id: `u-${Date.now()}`, name, status: "Available", online: false, lastSeen: null };
+  }
+  throw notConnected("Adding a contact");
+}
+
+
+
+========================================
+FILE: src\services\messageService.js
+========================================
+import { USE_MOCK, delay, notConnected } from "./api.js";
+import { messagesByConversation } from "../data/mockData.js";
+
+export async function getMessages(conversationId) {
+  if (USE_MOCK) {
+    await delay(350);
+    return (messagesByConversation[conversationId] ?? []).map((m) => ({ ...m }));
+  }
+  throw notConnected("Loading messages");
+}
+
+/** In mock mode the message stays on this device. It is never delivered to anyone. */
+export async function sendMessage(conversationId, { text, senderId }) {
+  if (USE_MOCK) {
+    await delay(200);
+    return { id: `m-${Date.now()}`, senderId, text, sentAt: new Date().toISOString(), status: "sent", starred: false };
+  }
+  throw notConnected("Sending a message");
+}
+
+export async function markAsRead(conversationId) {
+  if (USE_MOCK) { await delay(100); return { conversationId }; }
+  throw notConnected("Updating read receipts");
+}
+
+export async function uploadAttachment(conversationId, file) {
+  if (USE_MOCK) { await delay(600); return { name: file.name, size: file.size, url: null }; } // nothing is stored
+  throw notConnected("Uploading attachments");
+}
+
+
+
+========================================
+FILE: src\services\profileService.js
+========================================
+import { USE_MOCK, delay, notConnected } from "./api.js";
+
+export async function updateProfile(userId, changes) {
+  if (USE_MOCK) { await delay(); return { id: userId, ...changes }; } // kept in memory only
+  throw notConnected("Saving your profile");
+}
+
+
+
+========================================
+FILE: src\services\socket.js
+========================================
+import { USE_MOCK, WS_URL } from "./api.js";
+
+/*
+ * Real-time integration point for Django Channels.
+ * In mock mode this returns a no-op object with the same shape, so components
+ * can subscribe today and keep working once a real connection replaces it.
+ * Nothing is delivered in real time until the backend exists.
+ */
+export function createChatSocket({ onMessage, onStatusChange } = {}) {
+  if (USE_MOCK || !WS_URL) {
+    return { connect() { onStatusChange?.("mock"); }, disconnect() {}, send() {} };
+  }
+
+  let ws;
+  return {
+    connect() {
+      ws = new WebSocket(WS_URL); // PLANNED: final path and auth handshake decided with the backend
+      ws.onopen = () => onStatusChange?.("open");
+      ws.onclose = () => onStatusChange?.("closed");
+      ws.onmessage = (event) => {
+        try { onMessage?.(JSON.parse(event.data)); } catch { /* ignore malformed frames */ }
+      };
+    },
+    disconnect() { ws?.close(); },
+    send(payload) { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload)); },
+  };
+}
+
+
+
+========================================
+FILE: src\styles\variables.css
+========================================
+/* ==========================================================================
+   CloudChat design tokens. Change a value here and the whole app follows.
+   ========================================================================== */
+:root {
+  --font: "Manrope", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* Type scale */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+
+  /* Chatterly Brand */
+  --accent: #6366f1;          /* indicators, highlights */
+  --accent-strong: #4f46e5;   /* buttons and links: passes AA contrast with white */
+  --accent-strong-hover: #4338ca;
+  --on-accent: #ffffff;
+  --accent-soft: #e0e7ff;
+  --cyan: #06b6d4;
+
+  /* Status */
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+  --warning: #d97706;
+  --info: #0891b2;
+
+  /* Sidebar (dark in both themes) */
+  --sidebar-bg: #0f172a;
+  --sidebar-text: #cbd5e1;
+  --sidebar-muted: #64748b;
+  --sidebar-active: #1e293b;
+
+  /* Workspace surfaces */
+  --bg: #eef2f6;
+  --surface: #ffffff;
+  --surface-alt: #f6f8fb;
+  --border: #dde4ec;
+  --text: #0f172a;
+  --text-muted: #5b6b7f;
+  --chat-bg: #e9eff5;
+  --bubble-in: #ffffff;
+  --bubble-in-text: #0f172a;
+  --bubble-out: #e0e7ff;
+  --bubble-out-text: #312e81;
+
+  /* Shape */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* Elevation */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 6px 18px rgba(15, 23, 42, 0.1);
+  --shadow-lg: 0 18px 44px rgba(15, 23, 42, 0.22);
+
+  /* Layout */
+  --sidebar-width: 248px;
+  --sidebar-width-compact: 72px;
+  --list-width: 360px;
+  --touch-target: 44px;
+
+  /* Layering */
+  --z-sticky: 20;
+  --z-modal: 100;
+  --z-toast: 200;
+
+  --transition: 160ms ease;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --accent: #818cf8;          /* indicators, highlights */
+  --accent-strong: #a5b4fc;
+  --accent-strong-hover: #c7d2fe;
+  --on-accent: #1e1b4b;
+  --accent-soft: #312e81;
+
+  --danger: #f87171;
+  --danger-soft: #3b1518;
+  --warning: #fbbf24;
+  --info: #22d3ee;
+
+  --sidebar-bg: #060b18;
+  --sidebar-active: #172033;
+
+  --bg: #0a101c;
+  --surface: #101827;
+  --surface-alt: #162031;
+  --border: #223049;
+  --text: #f1f5f9;
+  --text-muted: #94a3b8;
+  --chat-bg: #0c1424;
+  --bubble-in: #1b2638;
+  --bubble-in-text: #f1f5f9;
+  --bubble-out: #312e81;
+  --bubble-out-text: #eef2ff;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.65);
+  color-scheme: dark;
+}
+
+
+
+========================================
+FILE: src\styles\global.css
+========================================
+/* Reset, base elements, and shared primitives (buttons, inputs, cards). */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root { height: 100%; }
+
+body {
+  font-family: var(--font);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3 { line-height: 1.2; letter-spacing: -0.015em; }
+h1 { font-size: var(--text-2xl); font-weight: 800; }
+h2 { font-size: var(--text-xl); font-weight: 700; }
+h3 { font-size: var(--text-lg); font-weight: 700; }
+
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; border: none; background: none; }
+button:disabled { cursor: not-allowed; opacity: 0.55; }
+a { color: var(--accent-strong); text-decoration: none; }
+a:hover { text-decoration: underline; }
+img, svg { display: block; max-width: 100%; }
+ul, ol { list-style: none; }
+
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+.muted { color: var(--text-muted); }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  min-height: var(--touch-target); padding: 0 var(--space-5);
+  border-radius: var(--radius-md); font-weight: 700; font-size: var(--text-sm);
+  transition: background var(--transition), border-color var(--transition), transform var(--transition);
+}
+.btn:active:not(:disabled) { transform: scale(0.98); }
+.btn-primary { background: var(--accent-strong); color: var(--on-accent); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-strong-hover); }
+.btn-ghost { border: 1px solid var(--border); background: var(--surface); }
+.btn-ghost:hover:not(:disabled) { background: var(--surface-alt); border-color: var(--text-muted); }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-block { width: 100%; }
+
+.icon-btn {
+  display: inline-grid; place-items: center;
+  width: var(--touch-target); height: var(--touch-target);
+  border-radius: var(--radius-full); color: var(--text-muted);
+  transition: background var(--transition), color var(--transition);
+}
+.icon-btn:hover:not(:disabled) { background: var(--surface-alt); color: var(--text); }
+
+/* Form controls */
+.field { display: flex; flex-direction: column; gap: var(--space-2); }
+.field label { font-size: var(--text-sm); font-weight: 600; }
+.field-error { font-size: var(--text-sm); color: var(--danger); }
+
+.input {
+  width: 100%; min-height: var(--touch-target); padding: 0 var(--space-4);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.input::placeholder { color: var(--text-muted); }
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); outline: none; }
+.input[aria-invalid="true"] { border-color: var(--danger); }
+
+/* Surfaces */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+  padding: var(--space-5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+
+
+========================================
+FILE: src\styles\common.css
+========================================
+/* Shared components: Avatar, Modal, Toast, Skeleton, SearchInput, states. */
+
+/* Avatar */
+.avatar {
+  position: relative; flex-shrink: 0;
+  display: inline-grid; place-items: center;
+  border-radius: var(--radius-full); color: #fff; font-weight: 700;
+  user-select: none;
+}
+.avatar-sm { width: 32px; height: 32px; font-size: var(--text-xs); }
+.avatar-md { width: 44px; height: 44px; font-size: var(--text-sm); }
+.avatar-lg { width: 56px; height: 56px; font-size: var(--text-lg); }
+.avatar-xl { width: 96px; height: 96px; font-size: var(--text-xl); }
+.avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+.avatar-status {
+  position: absolute; right: 0; bottom: 0; width: 28%; height: 28%; min-width: 9px; min-height: 9px;
+  border-radius: var(--radius-full); background: var(--accent); border: 2px solid var(--surface);
+}
+
+/* Brand */
+.brand { display: flex; align-items: center; gap: var(--space-3); }
+.brand-mark {
+  width: 38px; height: 38px; display: grid; place-items: center;
+  border-radius: 11px; background: var(--accent); color: #022c22;
+}
+.brand-name { font-size: var(--text-lg); font-weight: 800; letter-spacing: -0.02em; }
+
+/* Search */
+.search { position: relative; display: flex; align-items: center; }
+.search-icon { position: absolute; left: var(--space-3); color: var(--text-muted); pointer-events: none; }
+.search .input { padding-left: 40px; padding-right: 40px; border-radius: var(--radius-full); background: var(--surface-alt); }
+.search-clear { position: absolute; right: 4px; width: 36px; height: 36px; }
+
+/* Modal */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: var(--z-modal);
+  display: grid; place-items: center; padding: var(--space-4);
+  background: rgba(2, 6, 23, 0.55);
+  animation: fade-in 140ms ease;
+}
+.modal {
+  width: 100%; max-width: 480px; max-height: calc(100dvh - 32px); overflow: auto;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+  animation: pop-in 160ms ease;
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--border); }
+.modal-body { padding: var(--space-5); display: flex; flex-direction: column; gap: var(--space-4); }
+.modal-foot { display: flex; justify-content: flex-end; gap: var(--space-3); padding: var(--space-4) var(--space-5); border-top: 1px solid var(--border); }
+
+/* Toast */
+.toast-region {
+  position: fixed; z-index: var(--z-toast);
+  right: var(--space-4); bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; gap: var(--space-2);
+  width: min(360px, calc(100vw - 32px)); pointer-events: none;
+}
+.toast {
+  pointer-events: auto; display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4); border-radius: var(--radius-md);
+  background: var(--surface); border: 1px solid var(--border); border-left-width: 4px;
+  box-shadow: var(--shadow-md); animation: pop-in 160ms ease;
+}
+.toast-success { border-left-color: var(--accent); }
+.toast-error { border-left-color: var(--danger); }
+.toast-info { border-left-color: var(--info); }
+.toast-message { flex: 1; font-size: var(--text-sm); font-weight: 600; padding-top: 2px; }
+.toast .icon-btn { width: 28px; height: 28px; }
+
+/* Skeleton */
+.skeleton {
+  display: block; border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--surface-alt) 25%, var(--border) 50%, var(--surface-alt) 75%);
+  background-size: 200% 100%; animation: shimmer 1.4s linear infinite;
+}
+.skeleton-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); }
+.skeleton-lines { flex: 1; display: flex; flex-direction: column; gap: var(--space-2); }
+
+/* Empty and error states */
+.state { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--space-3); padding: var(--space-6) var(--space-5); }
+.state-icon { display: grid; place-items: center; width: 56px; height: 56px; border-radius: var(--radius-full); background: var(--accent-soft); color: var(--accent-strong); }
+.state-error .state-icon { background: var(--danger-soft); color: var(--danger); }
+.state p { max-width: 36ch; color: var(--text-muted); font-size: var(--text-sm); }
+
+@keyframes shimmer { to { background-position: -200% 0; } }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+
+
+
+========================================
+FILE: src\styles\layout.css
+========================================
+/* App shell and page scaffolding. The three-column dashboard arrives in Phase 3. */
+.page { min-height: 100%; max-width: 860px; margin: 0 auto; padding: var(--space-5) var(--space-4) var(--space-7); }
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-5); }
+.page-intro { margin-bottom: var(--space-5); display: flex; flex-direction: column; gap: var(--space-2); }
+
+.section { display: flex; flex-direction: column; gap: var(--space-4); margin-bottom: var(--space-5); }
+.section > header { display: flex; flex-direction: column; gap: 2px; }
+.row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.stack { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.notice {
+  display: flex; gap: var(--space-3); align-items: flex-start;
+  padding: var(--space-3) var(--space-4); border-radius: var(--radius-md);
+  background: var(--accent-soft); font-size: var(--text-sm);
+}
+.notice svg { flex-shrink: 0; margin-top: 2px; color: var(--accent-strong); }
+
+
+
+========================================
+FILE: src\styles\chat.css
+========================================
+/* Message bubbles. Conversation list and chat window styles arrive in Phase 3. */
+.bubbles {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-4); border-radius: var(--radius-lg); background: var(--chat-bg);
+}
+.bubble {
+  max-width: min(80%, 420px); padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); overflow-wrap: anywhere;
+}
+.bubble-in { background: var(--bubble-in); color: var(--bubble-in-text); border-bottom-left-radius: 4px; align-self: flex-start; }
+.bubble-out { background: var(--bubble-out); color: var(--bubble-out-text); border-bottom-right-radius: 4px; align-self: flex-end; }
+.bubble-meta { display: flex; justify-content: flex-end; gap: 4px; font-size: var(--text-xs); opacity: 0.7; }
+
+
+
+========================================
+FILE: src\styles\responsive.css
+========================================
+/* Breakpoints: tablet <= 1024px, mobile <= 640px. */
+@media (max-width: 1024px) {
+  :root { --list-width: 300px; }
+}
+
+@media (max-width: 640px) {
+  h1 { font-size: var(--text-xl); }
+  .page { padding: var(--space-4) var(--space-3) var(--space-6); }
+  .page-head .btn { min-width: var(--touch-target); }
+  .modal-backdrop { align-items: end; padding: 0; }
+  .modal { max-width: none; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+  .toast-region { right: var(--space-3); left: var(--space-3); width: auto; }
+}
+
+
+
+========================================
+FILE: src\pages\DesignSystem.jsx
+========================================
+import { useState } from "react";
+import { Info, MessageSquareOff, Check, CheckCheck, BellRing } from "lucide-react";
+import Logo from "../components/common/Logo.jsx";
+import ThemeToggle from "../components/common/ThemeToggle.jsx";
+import Avatar from "../components/common/Avatar.jsx";
+import SearchInput from "../components/common/SearchInput.jsx";
+import Modal from "../components/common/Modal.jsx";
+import LoadingSkeleton from "../components/common/LoadingSkeleton.jsx";
+import EmptyState from "../components/common/EmptyState.jsx";
+import ErrorState from "../components/common/ErrorState.jsx";
+import { useToast } from "../context/ToastContext.jsx";
+import { contacts } from "../data/mockData.js";
+
+/** Temporary Phase 1 page: proves tokens, themes, and shared components work. */
+export default function DesignSystem() {
+  const [query, setQuery] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
+  const { showToast } = useToast();
+
+  const matches = contacts.filter((c) => c.name.toLowerCase().includes(query.trim().toLowerCase()));
+
+  return (
+    <main className="page">
+      <header className="page-head">
+        <Logo />
+        <ThemeToggle />
+      </header>
+
+      <div className="page-intro">
+        <h1>Design system</h1>
+        <p className="muted">The building blocks every CloudChat screen will reuse.</p>
+        <div className="notice">
+          <Info size={18} aria-hidden="true" />
+          <span>All people and messages on this page are demo data. Nothing is sent to anyone.</span>
+        </div>
+      </div>
+
+      <section className="section card">
+        <header><h2>Buttons and inputs</h2></header>
+        <div className="row">
+          <button className="btn btn-primary">Send message</button>
+          <button className="btn btn-ghost">Cancel</button>
+          <button className="btn btn-danger">Delete chat</button>
+          <button className="btn btn-primary" disabled>Disabled</button>
+        </div>
+        <div className="field">
+          <label htmlFor="demo-email">Email address</label>
+          <input id="demo-email" className="input" type="email" placeholder="you@example.com" />
+        </div>
+        <div className="field">
+          <label htmlFor="demo-bad">Password</label>
+          <input id="demo-bad" className="input" type="password" aria-invalid="true" aria-describedby="demo-bad-err" />
+          <span id="demo-bad-err" className="field-error">Use at least 8 characters.</span>
+        </div>
+      </section>
+
+      <section className="section card">
+        <header><h2>Avatars and search</h2></header>
+        <div className="row">
+          {contacts.map((c) => (
+            <Avatar key={c.id} name={c.name} online={c.online} size="lg" />
+          ))}
+        </div>
+        <SearchInput value={query} onChange={setQuery} placeholder="Search contacts" label="Search contacts" />
+        {matches.length === 0 ? (
+          <EmptyState icon={<MessageSquareOff size={26} />} title="No contacts found" message="Try a different name." />
+        ) : (
+          <ul className="stack">
+            {matches.map((c) => (
+              <li key={c.id} className="row">
+                <Avatar name={c.name} online={c.online} />
+                <div>
+                  <strong>{c.name}</strong>
+                  <p className="muted" style={{ fontSize: "var(--text-sm)" }}>{c.status}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="section card">
+        <header><h2>Message bubbles</h2></header>
+        <div className="bubbles">
+          <div className="bubble bubble-in">Sent you the updated mockups.</div>
+          <div className="bubble bubble-out">
+            Looks great, thank you.
+            <span className="bubble-meta">09:42 <CheckCheck size={14} aria-label="Read" /></span>
+          </div>
+          <div className="bubble bubble-out">
+            Simulated message.
+            <span className="bubble-meta">09:43 <Check size={14} aria-label="Sent" /></span>
+          </div>
+        </div>
+      </section>
+
+      <section className="section card">
+        <header><h2>Loading, empty, and error states</h2></header>
+        <LoadingSkeleton rows={2} />
+        <ErrorState message="We couldn't load your conversations. Check your connection and try again." onRetry={() => showToast("Retry simulated", "info")} />
+      </section>
+
+      <section className="section card">
+        <header><h2>Feedback</h2></header>
+        <div className="row">
+          <button className="btn btn-ghost" onClick={() => showToast("Profile saved", "success")}>Success toast</button>
+          <button className="btn btn-ghost" onClick={() => showToast("Couldn't send message", "error")}>Error toast</button>
+          <button className="btn btn-primary" onClick={() => setModalOpen(true)}><BellRing size={16} /> Open dialog</button>
+        </div>
+      </section>
+
+      <Modal
+        open={modalOpen}
+        title="Create group"
+        onClose={() => setModalOpen(false)}
+        footer={
+          <>
+            <button className="btn btn-ghost" onClick={() => setModalOpen(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={() => { setModalOpen(false); showToast("Group created (demo)", "success"); }}>
+              Create group
+            </button>
+          </>
+        }
+      >
+        <div className="field">
+          <label htmlFor="group-name">Group name</label>
+          <input id="group-name" className="input" placeholder="Weekend Hike Crew" />
+        </div>
+        <p className="muted" style={{ fontSize: "var(--text-sm)" }}>Press Escape or tap outside to close.</p>
+      </Modal>
+    </main>
+  );
+}
+
+
+
+========================================
+FILE: src\main.jsx
+========================================
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import App from "./App.jsx";
+import { ThemeProvider } from "./context/ThemeContext.jsx";
+import { ToastProvider } from "./context/ToastContext.jsx";
+import { AuthProvider } from "./context/AuthContext.jsx";
+import { ChatProvider } from "./context/ChatContext.jsx";
+import "./styles/variables.css";
+import "./styles/global.css";
+import "./styles/common.css";
+import "./styles/layout.css";
+import "./styles/chat.css";
+import "./styles/responsive.css";
+
+createRoot(document.getElementById("root")).render(
+  <StrictMode>
+    <BrowserRouter>
+      <ThemeProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <ChatProvider>
+              <App />
+            </ChatProvider>
+          </AuthProvider>
+        </ToastProvider>
+      </ThemeProvider>
+    </BrowserRouter>
+  </StrictMode>
+);
+
+
+
+========================================
+FILE: index.html
+========================================
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="description" content="Chatterly - a modern messaging experience for meaningful connections." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <title>Chatterly - Every Conversation, closer.</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+
+
+
+========================================
+FILE: package.json
+========================================
+{
+  "name": "chatterly",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "lucide-react": "^1.61.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
+    "globals": "^17.13.0",
+    "vite": "^8.3.4"
+  }
+}
+
