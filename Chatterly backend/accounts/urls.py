@@ -1,12 +1,84 @@
 from django.urls import path
-from .views import (RegisterView, VerificationRequestView, VerifyContactView, LoginView, LogoutView, csrf_token_view, CurrentUserView)
+from .views import (
+    RegisterView, 
+    VerificationRequestView, 
+    VerifyContactView, 
+    LoginView, 
+    LogoutView, 
+    csrf_token_view, 
+    CurrentUserView,
+    ChangeEmailRequestView,
+    ChangePhoneRequestView,
+    ConfirmContactChangeView,
+    ChangePasswordView,
+    PasswordResetRequestView,
+    PasswordResetConfirmView,
+)
 
 urlpatterns = [
-    path("register/", RegisterView.as_view(), name="register"),
-    path("verification/request/", VerificationRequestView.as_view(), name="verification-request"),
-    path("verification/confirm/", VerifyContactView.as_view(), name="verification-confirm"),
-    path("login/", LoginView.as_view(), name="login"),
-    path("logout/", LogoutView.as_view(), name="logout"),
-    path("me/", CurrentUserView.as_view(), name="current-user"),
-    path("csrf/", csrf_token_view, name="csrf-token"),
-]
+    path(
+        "register/", 
+        RegisterView.as_view(), 
+        name="register"
+        ),
+    path(
+        "verification/request/", 
+        VerificationRequestView.as_view(), 
+        name="verification-request"
+        ),
+    path(
+        "verification/confirm/", 
+        VerifyContactView.as_view(), 
+        name="verification-confirm"
+        ),
+    path(
+        "login/", 
+        LoginView.as_view(), 
+        name="login"
+        ),
+    path(
+        "logout/", 
+        LogoutView.as_view(), 
+        name="logout"
+        ),
+    path(
+        "me/", 
+        CurrentUserView.as_view(), 
+        name="current-user"
+        ),
+    path(
+        "csrf/", 
+        csrf_token_view, 
+        name="csrf-token"
+        ),
+    path(
+        "email/change/request/",
+        ChangeEmailRequestView.as_view(),
+        name="change-email-request",
+    ),
+    path(
+        "phone/change/request/",
+        ChangePhoneRequestView.as_view(),
+        name="change-phone-request",
+    ),
+    path(
+        "contact/change/confirm/",
+        ConfirmContactChangeView.as_view(),
+        name="confirm-contact-change",
+    ),
+    path(
+        "password/change/",
+        ChangePasswordView.as_view(),
+        name="change-password",
+    ),
+    path(
+        "password/reset/request/",
+        PasswordResetRequestView.as_view(),
+        name="password-reset-request",
+    ),
+    path(
+        "password/reset/confirm/",
+        PasswordResetConfirmView.as_view(),
+        name="password-reset-confirm",
+    ),
+    ]

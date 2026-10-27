@@ -396,3 +396,133 @@ class ConfirmContactChangeView(APIView):
                 else "Phone number updated successfully."
             )
         })
+
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user
+        user.set_password(serializer.validated_data["new_password"])
+        user.save(update_fields=["password"])
+
+        # Keep this session authenticated and update its password hash.
+        # Other sessions using the old password hash will be invalidated.
+        update_session_auth_hash(request, user)
+
+        return Response({
+            "detail": "Password changed successfully."
+        })
+
+
+class PasswordResetRequestView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        identifier = serializer.validated_data["identifier"].strip()
+
+        if "@" in identifier:
+            user = User.objects.filter(email__iexact=identifier).first()
+            channel = VerificationCode.Channel.EMAIL
+            destination_field = "email"
+        else:
+            user = User.objects.filter(phone_number=identifier).first()
+            channel = VerificationCode.Channel.SMS
+            destination_field = "phone_number"
+
+        # Always return the same public response to reduce account enumeration.
+        generic_response = {
+            "detail": (
+                "If an account matches those details, a password-reset "
+                "code will be sent to the registered contact."
+            )
+        }
+
+        if user is None:
+            return Response(generic_response, status=status.HTTP_200_OK)
+
+        destination = getattr(user, destination_field)
+
+        try:
+            code = create_verification_code(
+                user=user,
+                purpose=VerificationCode.Purpose.PASSWORD_RESET,
+                channel=channel,
+                destination=destination,
+            )
+
+            deliver_verification_code(
+                channel=channel,
+                destination=destination,
+                code=code,
+                purpose=VerificationCode.Purpose.PASSWORD_RESET,
+            )
+
+        except Exception:
+            logger.exception("Failed to send password-reset verification code.")
+
+            VerificationCode.objects.filter(
+                user=user,
+                purpose=VerificationCode.Purpose.PASSWORD_RESET,
+                channel=channel,
+                consumed_at__isnull=True,
+            ).update(consumed_at=timezone.now())
+
+        return Response(generic_response, status=status.HTTP_200_OK)
+
+
+class PasswordResetConfirmView(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        identifier = serializer.validated_data["identifier"].strip()
+        code = serializer.validated_data["code"]
+        new_password = serializer.validated_data["new_password"]
+
+        if "@" in identifier:
+            user = User.objects.filter(email__iexact=identifier).first()
+            channel = VerificationCode.Channel.EMAIL
+        else:
+            user = User.objects.filter(phone_number=identifier).first()
+            channel = VerificationCode.Channel.SMS
+
+        # Use the same response for unknown accounts and invalid codes.
+        invalid_response = Response(
+            {"detail": "The verification code is invalid or expired."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+        if user is None:
+            return invalid_response
+
+        verification, error = verify_code(
+            user=user,
+            purpose=VerificationCode.Purpose.PASSWORD_RESET,
+            channel=channel,
+            code=code,
+        )
+
+        if error or verification is None:
+            return invalid_response
+
+        user.set_password(new_password)
+        user.save(update_fields=["password"])
+
+        return Response({
+            "detail": "Password reset successfully. You can now log in."
+        })
